@@ -847,7 +847,12 @@ export async function loadTransactions() {
 }
 
 if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-        navigator.serviceWorker.register("./service-worker.js");
+    window.addEventListener("load", async () => {
+        try {
+            const reg = await navigator.serviceWorker.register("./service-worker.js");
+            console.log("✅ Service Worker 등록 성공", reg);
+        } catch (err) {
+            console.error("❌ Service Worker 등록 실패", err);
+        }
     });
 }
