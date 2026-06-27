@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>MoneyBook</title>
+	<link rel="stylesheet" href="./style.css">
+	<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+	<script type="module" src="./js/firebase-config.js"></script>
+	<script type="module" src="./js/auth.js"></script>
+	<script type="module" src="./js/app.js"></script>
+	<script src="./js/script.js" defer></script>
+</head>
+<body>
+
+<div id="overlay"></div>
+
+<div id="loginModal">
+	<h2>로그인이 필요합니다</h2>
+	<button type="button" id="googleLoginBtn">Google 로그인</button>
+</div>
+
+<div id="appContent">
+	<div class="wrap_moneybook">
+		<header class="header_moneybook">
+			<div class="area_header_center">
+				<div class="area_header_left">
+					<h2 class="tit_month txt_month"></h2>
+					<div class="box_month_pill">
+						<button type="button" class="btn_month btn_month_prev" data-nav="prev" aria-label="이전 달">
+							<span class="icon_chevron icon_chevron_left" aria-hidden="true"></span>
+						</button>
+						<button type="button" class="btn_today" id="todayBtn">오늘</button>
+						<button type="button" class="btn_month btn_month_next" data-nav="next" aria-label="다음 달">
+							<span class="icon_chevron icon_chevron_right" aria-hidden="true"></span>
+						</button>
+					</div>
+				</div>
+				<div class="box_header_summary" aria-label="월간 요약">
+					<div class="item_header_summary">
+						<span class="txt_header_label txt_header_label_income">수입</span>
+						<p class="txt_amount txt_amount_income">0<mark>원</mark></p>
+					</div>
+					<div class="item_header_summary">
+						<span class="txt_header_label txt_header_label_expense">지출</span>
+						<p class="txt_amount txt_amount_expense">0<mark>원</mark></p>
+					</div>
+					<div class="item_header_summary">
+						<span class="txt_header_label txt_header_label_total">잔액</span>
+						<p class="txt_amount txt_amount_total">0<mark>원</mark></p>
+					</div>
+				</div>
+			</div>
+		</header>
+
+		<main class="main_moneybook">
+			<div class="area_content">
+				<section class="section_main">
+					<div class="box_tab">
+						<button type="button" class="btn_tab is_active" data-tab="calendar">달력</button>
+						<button type="button" class="btn_tab" data-tab="history">내역</button>
+						<button type="button" class="btn_tab btn_tab_register" data-tab="register">등록</button>
+					</div>
+
+					<div class="panel_tab panel_calendar is_active" data-panel="calendar">
+						<div class="box_calendar">
+							<div class="head_calendar" aria-hidden="true">
+								<span class="col_day col_day_sun">일</span>
+								<span class="col_day">월</span>
+								<span class="col_day">화</span>
+								<span class="col_day">수</span>
+								<span class="col_day">목</span>
+								<span class="col_day">금</span>
+								<span class="col_day col_day_sat">토</span>
+							</div>
+							<div class="grid_calendar" id="calendarBody" role="grid" aria-label="가계부 달력"></div>
+						</div>
+					</div>
+
+					<div class="panel_tab panel_history" data-panel="history">
+						<section class="card_history_overview" aria-label="조회기간 요약">
+							<div class="item_history_overview">
+								<span class="txt_history_overview_label txt_history_overview_label_income">수입</span>
+								<p class="txt_history_overview_amount txt_history_amount_income" id="historySummaryIncome">0<mark>원</mark></p>
+							</div>
+							<div class="item_history_overview">
+								<span class="txt_history_overview_label txt_history_overview_label_expense">지출</span>
+								<p class="txt_history_overview_amount txt_history_amount_expense" id="historySummaryExpense">0<mark>원</mark></p>
+							</div>
+							<div class="item_history_overview">
+								<span class="txt_history_overview_label txt_history_overview_label_total">잔액</span>
+								<p class="txt_history_overview_amount txt_history_amount_total" id="historySummaryTotal">0<mark>원</mark></p>
+							</div>
+						</section>
+
+						<div class="box_history_filter">
+							<div class="layout_history_filter">
+								<div class="col_history_filter col_history_filter_date">
+									<span class="txt_filter_label">시작일</span>
+									<input type="date" class="input_date_filter" id="historyStartDate" aria-label="조회 시작일">
+								</div>
+								<div class="col_history_filter col_history_filter_date">
+									<span class="txt_filter_label">종료일</span>
+									<input type="date" class="input_date_filter" id="historyEndDate" aria-label="조회 종료일">
+								</div>
+								<div class="col_history_filter col_history_filter_type">
+									<span class="txt_filter_label">유형</span>
+									<div class="box_history_type">
+										<button type="button" class="btn_history_type is_active" data-history-type="all">전체</button>
+										<button type="button" class="btn_history_type" data-history-type="income">수입</button>
+										<button type="button" class="btn_history_type" data-history-type="expense">지출</button>
+									</div>
+								</div>
+								<div class="col_history_filter col_history_filter_category" id="historyCategoryCol">
+									<span class="txt_filter_label">카테고리</span>
+									<select class="select_history_category" id="historyCategory" aria-label="카테고리 선택" disabled></select>
+								</div>
+							</div>
+							<p class="txt_filter_error" id="historyFilterError">시작일은 종료일보다 이후일 수 없습니다.</p>
+						</div>
+
+						<div class="box_history_list scroll_area_modern">
+							<div id="transactionList" class="list_history_grouped"></div>
+							<p class="txt_empty" id="historyEmpty">선택한 기간의 내역이 없습니다.</p>
+						</div>
+					</div>
+				</section>
+
+				<aside class="aside_input" id="inputFormPanel">
+					<div class="header_input_form">
+						<h3 class="tit_input">내역 입력</h3>
+						<button type="button" class="btn_modal_close btn_input_close" id="inputModalClose" aria-label="닫기">x</button>
+					</div>
+					<p class="txt_input_desc">장부에 새로운 거래를 기록합니다.</p>
+
+					<select id="type" hidden aria-hidden="true">
+						<option value="income">수입</option>
+						<option value="expense">지출</option>
+					</select>
+
+					<form class="form_input" action="#" method="post">
+						<div class="row_field">
+							<label class="label_field" for="date">날짜</label>
+							<div class="box_field">
+								<input type="date" class="input_field" id="date" name="date">
+							</div>
+						</div>
+						<div class="row_field">
+							<span class="label_field">유형</span>
+							<div class="box_type_toggle">
+								<button type="button" class="btn_type" data-type="expense">지출</button>
+								<button type="button" class="btn_type is_active" data-type="income">수입</button>
+							</div>
+						</div>
+						<div class="row_field">
+							<label class="label_field" for="category">항목</label>
+							<div class="box_field">
+								<select class="select_field" id="category" name="category"></select>
+							</div>
+						</div>
+						<div class="row_field">
+							<label class="label_field" for="amount">금액</label>
+							<div class="box_field">
+								<span class="txt_currency">₩</span>
+								<input type="text" class="input_field" id="amount" name="amount" placeholder="0" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+							</div>
+						</div>
+						<div class="row_field">
+							<label class="label_field" for="memo">메모 <span class="txt_optional">(선택)</span></label>
+							<div class="box_field box_field_memo">
+								<input type="text" class="input_field" id="memo" name="memo" placeholder="기억해두고 싶은 내용">
+							</div>
+						</div>
+						<button type="button" class="btn_save" id="saveBtn">+ 저장하기</button>
+						<p class="txt_form_error" id="formErrorMsg">입력해주세요</p>
+					</form>
+				</aside>
+			</div>
+		</main>
+	</div>
+</div>
+
+<div id="inputModalOverlay" class="modal_overlay_input"></div>
+<button type="button" class="btn_add_transaction" id="openInputBtn" aria-label="내역 추가">+</button>
+
+<div id="dayModalOverlay" class="modal_overlay_day"></div>
+
+<div id="dayDetailModal" class="modal_day_detail" role="dialog" aria-labelledby="dayModalTitle">
+	<div class="modal_day_header">
+		<h3 class="tit_day_modal" id="dayModalTitle"></h3>
+		<button type="button" class="btn_modal_close" id="dayModalClose" aria-label="닫기">x</button>
+	</div>
+	<div class="box_day_summary">
+		<div class="item_day_summary">
+			<span class="txt_day_label">수입</span>
+			<span class="txt_day_amount txt_day_amount_income" id="dayModalIncome">0<mark>원</mark></span>
+		</div>
+		<div class="item_day_summary">
+			<span class="txt_day_label">지출</span>
+			<span class="txt_day_amount txt_day_amount_expense" id="dayModalExpense">0<mark>원</mark></span>
+		</div>
+		<div class="item_day_summary">
+			<span class="txt_day_label">합계</span>
+			<span class="txt_day_amount txt_day_amount_total" id="dayModalTotal">0<mark>원</mark></span>
+		</div>
+	</div>
+	<div id="dayModalList" class="list_transaction list_day_modal"></div>
+	<p class="txt_empty" id="dayModalEmpty">해당 날짜의 내역이 없습니다.</p>
+</div>
+
+</body>
+</html>
