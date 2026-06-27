@@ -1,21 +1,26 @@
 {
-    "name": "MoneyBook",
-    "short_name": "MoneyBook",
-    "start_url": "/Moneybook",
-    "display": "standalone",
-    "background_color": "#ffffff",
-    "theme_color": "#4F46E5",
-    "orientation": "portrait",
-    "icons": [
-      {
-        "src": "img/icon_192.png",
-        "sizes": "192x192",
-        "type": "image/png"
-      },
-      {
-        "src": "img/icon_512.png",
-        "sizes": "512x512",
-        "type": "image/png"
-      }
-    ]
-  }
+  "name": "Moneybook",
+  "short_name": "Moneybook",
+
+  "start_url": "/Moneybook/",
+  "scope": "/Moneybook/",
+
+  "display": "standalone",
+  "orientation": "portrait",
+
+  "background_color": "#ffffff",
+  "theme_color": "#4F46E5",
+
+  "icons": [
+    {
+      "src": "images/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "images/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
