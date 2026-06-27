@@ -2,8 +2,8 @@
   "name": "Moneybook",
   "short_name": "Moneybook",
 
-  "start_url": "/Moneybook/",
-  "scope": "/Moneybook/",
+  "start_url": "./",
+  "scope": "./",
 
   "display": "standalone",
   "orientation": "portrait",
