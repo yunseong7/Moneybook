@@ -14,7 +14,7 @@ import {
 /* ---------------- 카테고리 ---------------- */
 
 const incomeCategories = ["급여", "용돈", "부가수입", "기타"];
-const expenseCategories = ["식비", "피어스", "개인", "음료(커피)", "다이소", "경조사", "고정비", "기타"];
+const expenseCategories = ["식비", "피어스", "개인", "음료(커피)", "다이소", "교통비", "경조사", "고정비", "기타"];
 
 let currentYear = new Date().getFullYear();
 let currentMonth = new Date().getMonth() + 1;
