@@ -33,10 +33,14 @@ onAuthStateChanged(auth, (user) => {
         $("#overlay").hide();
         $("#loginModal").hide();
         $("#appContent").addClass("is_visible");
+        const photo = user.photoURL || "";
+        const name = user.displayName || "사용자";
+        $("#userAvatarRail").attr({ src: photo, alt: name }).toggle(Boolean(photo));
         loadTransactions();
     } else {
         $("#overlay").show();
         $("#loginModal").show();
         $("#appContent").removeClass("is_visible");
+        $("#userAvatarRail").attr({ src: "", alt: "" });
     }
 });

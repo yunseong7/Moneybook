@@ -11,136 +11,219 @@ import {
     deleteDoc
 } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
 
-/* ---------------- 카테고리 ---------------- */
+const incomeCategories = ["급여", "세이프박스 출금", "용돈", "부가수입", "기타"];
+const expenseCategories = ["개인", "피어스(밥 + 음료)", "식비", "심부름", "커피 / 음료", "세이프박스 입금", "교통비", "경조사", "고정비", "기타"];
 
-const incomeCategories = ["급여", "용돈", "부가수입", "기타"];
-const expenseCategories = ["식비", "피어스", "개인", "음료(커피)", "다이소", "교통비", "경조사", "고정비", "기타"];
+const categoryIcons = {
+    "급여": "₩",
+    "세이프박스 출금": "▣",
+    "용돈": "♡",
+    "부가수입": "+",
+    "개인": "☺",
+    "피어스(밥 + 음료)": "🍴",
+    "식비": "🍴",
+    "심부름": "→",
+    "커피 / 음료": "☕",
+    "세이프박스 입금": "▣",
+    "교통비": "🚌",
+    "경조사": "✿",
+    "고정비": "⌂",
+    "기타": "···"
+};
 
 let currentYear = new Date().getFullYear();
 let currentMonth = new Date().getMonth() + 1;
 let allTransactions = [];
 let editingId = null;
-let currentDayModalDate = null;
+let selectedCalendarDate = "";
 let historyFilterStart = "";
 let historyFilterEnd = "";
 let historyFilterType = "all";
 let historyFilterCategory = "";
+let historySearch = "";
+let historyPeriod = "this_month";
+let categoryPage = 0;
+const CATEGORY_PAGE_SIZE = 4;
 
 const isRichUI = () => $("#calendarBody").length > 0;
 
-const MAN_UNIT = 10000;
-const EOK_UNIT = 100000000;
+function formatPlain(amount) {
+    return Math.round(Math.abs(Number(amount) || 0)).toLocaleString("ko-KR");
+}
 
-function buildAmountDisplay(abs, html = false) {
-    const amount = Math.abs(Math.round(Number(abs) || 0));
+function formatPlainWon(amount) {
+    return `${formatPlain(amount)}원`;
+}
 
-    if (amount < MAN_UNIT) {
-        const value = amount.toLocaleString("ko-KR");
-        return html ? `${value}<mark>원</mark>` : `${value}원`;
-    }
-
-    const segments = [];
-    let remaining = amount;
-
-    if (remaining >= EOK_UNIT) {
-        const eok = Math.floor(remaining / EOK_UNIT);
-        segments.push({ value: eok.toLocaleString("ko-KR"), unit: "억" });
-        remaining %= EOK_UNIT;
-    }
-
-    if (remaining >= MAN_UNIT) {
-        const man = Math.floor(remaining / MAN_UNIT);
-        segments.push({ value: man.toLocaleString("ko-KR"), unit: "만" });
-        remaining %= MAN_UNIT;
-    }
-
-    if (remaining > 0) {
-        segments.push({ value: remaining.toLocaleString("ko-KR"), unit: "원" });
-    }
-
-    return segments.map((segment, index) => {
-        const isLast = index === segments.length - 1;
-        const unit = isLast && html ? `<mark>${segment.unit}</mark>` : segment.unit;
-        return `${segment.value}${unit}`;
-    }).join(" ");
+function formatSignedPlain(amount) {
+    const num = Number(amount) || 0;
+    const sign = num > 0 ? "+" : num < 0 ? "-" : "";
+    return `${sign}${formatPlain(num)}원`;
 }
 
 function formatAmount(amount) {
-    return buildAmountDisplay(amount, false);
+    return formatPlainWon(amount);
 }
 
 function formatAmountHtml(amount) {
-    return buildAmountDisplay(amount, true);
+    return `${formatPlain(amount)}<mark>원</mark>`;
 }
 
 function formatSignedAmount(amount) {
-    const num = Number(amount) || 0;
-    const sign = num > 0 ? "+" : num < 0 ? "-" : "";
-    return `${sign}${buildAmountDisplay(Math.abs(num), false)}`;
+    return formatSignedPlain(amount);
 }
 
 function formatSignedAmountHtml(amount) {
     const num = Number(amount) || 0;
     const sign = num > 0 ? "+" : num < 0 ? "-" : "";
-    return `${sign}${buildAmountDisplay(Math.abs(num), true)}`;
+    return `${sign}${formatPlain(num)}<mark>원</mark>`;
 }
 
-function getMonthPrefix() {
-    return `${currentYear}-${String(currentMonth).padStart(2, "0")}`;
+function getMonthPrefix(year = currentYear, month = currentMonth) {
+    return `${year}-${String(month).padStart(2, "0")}`;
 }
 
 function formatDateYMD(year, month, day) {
     return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-function getThisMonthRange() {
+function getTodayYMD() {
     const today = new Date();
-    const year = today.getFullYear();
-    const month = today.getMonth() + 1;
-    const lastDay = new Date(year, month, 0).getDate();
+    return formatDateYMD(today.getFullYear(), today.getMonth() + 1, today.getDate());
+}
 
+function formatDateChip(dateStr) {
+    if (!dateStr) return "날짜 선택";
+
+    const weekdayNames = ["일", "월", "화", "수", "목", "금", "토"];
+    const [year, month, day] = dateStr.split("-").map(Number);
+    const weekday = weekdayNames[new Date(year, month - 1, day).getDay()];
+
+    return `${month}월 ${day}일 ${weekday}`;
+}
+
+function formatPeekTitle(dateStr) {
+    const weekdayNames = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"];
+    const [year, month, day] = dateStr.split("-").map(Number);
+    const weekday = weekdayNames[new Date(year, month - 1, day).getDay()];
+
+    return `${month}월 ${day}일 ${weekday}`;
+}
+
+function formatHistoryDateHeader(dateStr) {
+    const weekdayNames = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"];
+    const [year, month, day] = dateStr.split("-").map(Number);
+    const weekday = weekdayNames[new Date(year, month - 1, day).getDay()];
+
+    return `${month}월 ${day}일 ${weekday}`;
+}
+
+function formatTime(createdAt) {
+    if (!createdAt) return "";
+
+    const date = new Date(createdAt);
+    if (Number.isNaN(date.getTime())) return "";
+
+    return date.toLocaleTimeString("ko-KR", { hour: "numeric", minute: "2-digit" });
+}
+
+function getMonthRange(year, month) {
     return {
         start: formatDateYMD(year, month, 1),
-        end: formatDateYMD(year, month, lastDay)
+        end: formatDateYMD(year, month, new Date(year, month, 0).getDate())
     };
 }
 
-function initHistoryFilter() {
-    const range = getThisMonthRange();
+function getThisMonthRange() {
+    const today = new Date();
+    return getMonthRange(today.getFullYear(), today.getMonth() + 1);
+}
 
-    historyFilterStart = range.start;
-    historyFilterEnd = range.end;
+function getLastMonthRange() {
+    const today = new Date();
+    const date = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    return getMonthRange(date.getFullYear(), date.getMonth() + 1);
+}
+
+function getThisYearRange() {
+    const year = new Date().getFullYear();
+    return {
+        start: formatDateYMD(year, 1, 1),
+        end: formatDateYMD(year, 12, 31)
+    };
+}
+
+function getTransactionsByRange(start, end) {
+    return allTransactions.filter(t => t.date && t.date >= start && t.date <= end);
+}
+
+function sumByType(transactions) {
+    let income = 0;
+    let expense = 0;
+
+    transactions.forEach(t => {
+        if (t.type === "income") income += t.amount;
+        else expense += t.amount;
+    });
+
+    return { income, expense, total: income - expense };
+}
+
+function formatDelta(current, previous) {
+    if (!previous) {
+        return current ? "신규" : "";
+    }
+
+    const rate = ((current - previous) / previous) * 100;
+    const sign = rate > 0 ? "+" : "";
+    return `${sign}${rate.toFixed(1)}% vs 지난 달`;
+}
+
+function initHistoryFilter() {
+    applyHistoryPeriod("this_month", true);
     historyFilterType = "all";
     historyFilterCategory = "";
-    $("#historyStartDate").val(range.start);
-    $("#historyEndDate").val(range.end);
     $(".btn_history_type").removeClass("is_active");
     $('.btn_history_type[data-history-type="all"]').addClass("is_active");
     populateHistoryCategoryOptions();
     $("#historyFilterError").hide();
 }
 
+export function applyHistoryPeriod(period, silent) {
+    historyPeriod = period;
+    $(".btn_period").removeClass("is_active");
+    $(`.btn_period[data-period="${period}"]`).addClass("is_active");
+
+    let range = getThisMonthRange();
+
+    if (period === "last_month") range = getLastMonthRange();
+    if (period === "this_year") range = getThisYearRange();
+
+    if (period !== "custom") {
+        historyFilterStart = range.start;
+        historyFilterEnd = range.end;
+        $("#historyStartDate").val(range.start);
+        $("#historyEndDate").val(range.end);
+        $("#historyFilterPanel").removeClass("is_open");
+    } else {
+        $("#historyFilterPanel").addClass("is_open");
+    }
+
+    if (!silent) renderHistoryPanel();
+}
+
 function populateHistoryCategoryOptions() {
     const $select = $("#historyCategory");
-
     if (!$select.length) return;
 
     if (historyFilterType === "all") {
         historyFilterCategory = "";
-        $select.empty();
-        $select.append('<option value="">전체 카테고리</option>');
-        $select.val("");
-        $select.prop("disabled", true);
+        $select.empty().append('<option value="">전체 카테고리</option>').val("").prop("disabled", true);
         return;
     }
 
-    const list = historyFilterType === "income"
-        ? incomeCategories
-        : expenseCategories;
-
-    $select.prop("disabled", false);
-    $select.empty();
-    $select.append('<option value="">전체 카테고리</option>');
+    const list = historyFilterType === "income" ? incomeCategories : expenseCategories;
+    $select.prop("disabled", false).empty().append('<option value="">전체 카테고리</option>');
 
     list.forEach(category => {
         $select.append(`<option value="${category}">${category}</option>`);
@@ -156,12 +239,7 @@ function populateHistoryCategoryOptions() {
 
 function syncHistoryFiltersFromUI() {
     historyFilterType = $(".btn_history_type.is_active").data("history-type") || "all";
-
-    if (historyFilterType === "all") {
-        historyFilterCategory = "";
-    } else {
-        historyFilterCategory = $("#historyCategory").val() || "";
-    }
+    historyFilterCategory = historyFilterType === "all" ? "" : ($("#historyCategory").val() || "");
 }
 
 function getHistoryPeriodTransactions() {
@@ -169,74 +247,75 @@ function getHistoryPeriodTransactions() {
         return getMonthTransactions();
     }
 
-    return allTransactions.filter(t =>
-        t.date && t.date >= historyFilterStart && t.date <= historyFilterEnd
-    );
+    return getTransactionsByRange(historyFilterStart, historyFilterEnd);
 }
 
 function getHistoryTransactions() {
+    const keyword = historySearch.trim().toLowerCase();
+
     return getHistoryPeriodTransactions().filter(t => {
-        if (historyFilterType !== "all" && t.type !== historyFilterType) {
-            return false;
+        if (historyFilterType !== "all" && t.type !== historyFilterType) return false;
+        if (historyFilterCategory && t.category !== historyFilterCategory) return false;
+        if (keyword) {
+            const hay = `${t.category || ""} ${t.memo || ""}`.toLowerCase();
+            if (!hay.includes(keyword)) return false;
         }
-
-        if (historyFilterCategory && t.category !== historyFilterCategory) {
-            return false;
-        }
-
         return true;
     });
 }
 
-function formatHistoryDateHeader(dateStr) {
-    const weekdayNames = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"];
-    const [year, month, day] = dateStr.split("-").map(Number);
-    const weekday = weekdayNames[new Date(year, month - 1, day).getDay()];
-
-    return `${year}년 ${month}월 ${day}일 ${weekday}`;
+function formatDaySummary(transactions) {
+    const { total } = sumByType(transactions);
+    return formatSignedPlain(total);
 }
 
-function formatDaySummary(transactions) {
-    let income = 0;
-    let expense = 0;
+function buildPeekItem(t) {
+    const sign = t.type === "income" ? "+" : "-";
+    const typeClass = t.type === "income" ? "is_income" : "is_expense";
+    const time = formatTime(t.createdAt);
+    const sub = [time, t.memo].filter(Boolean).join(" · ");
 
-    transactions.forEach(t => {
-        if (t.type === "income") income += t.amount;
-        else expense += t.amount;
-    });
-
-    const parts = [];
-
-    if (income) parts.push(`+${formatAmount(income)}`);
-    if (expense) parts.push(`-${formatAmount(expense)}`);
-
-    return parts.join(" ");
+    return `
+        <li class="item_peek" data-id="${t.id || ""}">
+            <div class="box_peek_left">
+                <span class="icon_category">${categoryIcons[t.category] || "·"}</span>
+                <div>
+                    <span class="txt_peek_category">${t.category}</span>
+                    ${sub ? `<span class="txt_peek_sub">${sub}</span>` : ""}
+                </div>
+            </div>
+            <div class="area_peek_right">
+                <span class="txt_peek_amount ${typeClass}">${sign}${formatPlainWon(t.amount)}</span>
+                ${t.id ? `<div class="area_transaction_actions">
+                    <button type="button" class="btn_transaction btn_transaction_edit" data-id="${t.id}">수정</button>
+                    <button type="button" class="btn_transaction btn_transaction_delete" data-id="${t.id}">삭제</button>
+                </div>` : ""}
+            </div>
+        </li>
+    `;
 }
 
 function buildHistoryListItem(t) {
     const sign = t.type === "income" ? "+" : "-";
     const typeClass = t.type === "income" ? "is_income" : "is_expense";
-    const dotClass = t.type === "income" ? "dot_history_income" : "dot_history_expense";
-    const memo = t.memo ? `<span class="txt_history_memo">${t.memo}</span>` : "";
-    const actionsHtml = t.id
-        ? `<div class="area_transaction_actions">
-                <button type="button" class="btn_transaction btn_transaction_edit" data-id="${t.id}">수정</button>
-                <button type="button" class="btn_transaction btn_transaction_delete" data-id="${t.id}">삭제</button>
-           </div>`
-        : "";
+    const time = formatTime(t.createdAt);
+    const memo = t.memo || time;
 
     return `
         <li class="item_history" data-id="${t.id || ""}">
             <div class="box_history_item_left">
-                <span class="dot_history ${dotClass}" aria-hidden="true"></span>
+                <span class="icon_category">${categoryIcons[t.category] || "·"}</span>
                 <div class="box_history_item_text">
                     <span class="txt_history_category">${t.category}</span>
-                    ${memo}
+                    ${memo ? `<span class="txt_history_memo">${memo}</span>` : ""}
                 </div>
             </div>
             <div class="area_history_item_right">
-                <span class="txt_history_amount ${typeClass}">${sign}${formatAmount(t.amount)}</span>
-                ${actionsHtml}
+                <span class="txt_history_amount ${typeClass}">${sign}${formatPlainWon(t.amount)}</span>
+                ${t.id ? `<div class="area_transaction_actions">
+                    <button type="button" class="btn_transaction btn_transaction_edit" data-id="${t.id}">수정</button>
+                    <button type="button" class="btn_transaction btn_transaction_delete" data-id="${t.id}">삭제</button>
+                </div>` : ""}
             </div>
         </li>
     `;
@@ -245,19 +324,10 @@ function buildHistoryListItem(t) {
 function updateHistorySummary() {
     if (!$("#historySummaryIncome").length) return;
 
-    let income = 0;
-    let expense = 0;
-
-    getHistoryTransactions().forEach(t => {
-        if (t.type === "income") income += t.amount;
-        else expense += t.amount;
-    });
-
-    const total = income - expense;
-
-    $("#historySummaryIncome").html(formatAmountHtml(income));
-    $("#historySummaryExpense").html(formatAmountHtml(expense));
-    $("#historySummaryTotal").html(formatSignedAmountHtml(total));
+    const { income, expense, total } = sumByType(getHistoryTransactions());
+    $("#historySummaryIncome").text(formatPlainWon(income));
+    $("#historySummaryExpense").text(formatPlainWon(expense));
+    $("#historySummaryTotal").text(formatSignedPlain(total));
 }
 
 function renderHistoryPanel() {
@@ -270,14 +340,8 @@ function applyHistoryFilter() {
     const end = $("#historyEndDate").val();
 
     if (!start || !end) {
-        if (!start) {
-            $("#historyStartDate").addClass("is_error");
-        }
-
-        if (!end) {
-            $("#historyEndDate").addClass("is_error");
-        }
-
+        if (!start) $("#historyStartDate").addClass("is_error");
+        if (!end) $("#historyEndDate").addClass("is_error");
         return;
     }
 
@@ -290,6 +354,9 @@ function applyHistoryFilter() {
 
     historyFilterStart = start;
     historyFilterEnd = end;
+    historyPeriod = "custom";
+    $(".btn_period").removeClass("is_active");
+    $('.btn_period[data-period="custom"]').addClass("is_active");
     syncHistoryFiltersFromUI();
     $("#historyFilterError").hide();
     renderHistoryPanel();
@@ -298,14 +365,15 @@ function applyHistoryFilter() {
 function switchHistoryType(type) {
     historyFilterType = type;
     historyFilterCategory = "";
-
     $(".btn_history_type").removeClass("is_active");
     $(`.btn_history_type[data-history-type="${type}"]`).addClass("is_active");
     populateHistoryCategoryOptions();
+    if (historyFilterStart && historyFilterEnd) renderHistoryPanel();
+}
 
-    if (historyFilterStart && historyFilterEnd) {
-        renderHistoryPanel();
-    }
+export function setHistorySearch(value) {
+    historySearch = value || "";
+    renderHistoryPanel();
 }
 
 function getTransactionById(id) {
@@ -313,21 +381,70 @@ function getTransactionById(id) {
 }
 
 export function loadCategories(selectedCategory) {
-    const type = $("#type").val();
+    const type = $("#type").val() || "expense";
+    const list = type === "income" ? incomeCategories : expenseCategories;
+    const chosen = selectedCategory && list.includes(selectedCategory) ? selectedCategory : list[0];
 
     $("#category").empty();
+    $("#categoryChips").empty();
+    $("#inputFormPanel").toggleClass("is_income_mode", type === "income");
 
-    const list = type === "income"
-        ? incomeCategories
-        : expenseCategories;
-
-    list.forEach(c => {
-        $("#category").append(`<option value="${c}">${c}</option>`);
+    list.forEach(category => {
+        $("#category").append(`<option value="${category}">${category}</option>`);
+        $("#categoryChips").append(
+            `<button type="button" class="btn_category_chip${category === chosen ? " is_active" : ""}" data-category="${category}">${category}</button>`
+        );
     });
 
-    if (selectedCategory && list.includes(selectedCategory)) {
-        $("#category").val(selectedCategory);
+    $("#category").val(chosen || "");
+    categoryPage = 0;
+
+    if (chosen) {
+        const chosenIndex = list.indexOf(chosen);
+        if (chosenIndex >= 0) {
+            categoryPage = Math.floor(chosenIndex / CATEGORY_PAGE_SIZE);
+        }
     }
+
+    renderCategoryPage();
+}
+
+function renderCategoryPage() {
+    const $chips = $("#categoryChips .btn_category_chip");
+
+    if (!isCompactLayout()) {
+        $chips.removeClass("is_page_hidden");
+        return;
+    }
+
+    const total = $chips.length;
+    const maxPage = Math.max(0, Math.ceil(total / CATEGORY_PAGE_SIZE) - 1);
+
+    if (categoryPage > maxPage) categoryPage = maxPage;
+    if (categoryPage < 0) categoryPage = 0;
+
+    const start = categoryPage * CATEGORY_PAGE_SIZE;
+    const end = start + CATEGORY_PAGE_SIZE;
+
+    $chips.each(function (index) {
+        $(this).toggleClass("is_page_hidden", index < start || index >= end);
+    });
+
+    $("#categoryPrevBtn").prop("disabled", categoryPage <= 0);
+    $("#categoryNextBtn").prop("disabled", categoryPage >= maxPage);
+}
+
+export function shiftCategoryPage(delta) {
+    categoryPage += delta;
+    renderCategoryPage();
+}
+
+export function selectCategory(category) {
+    if (!category) return;
+
+    $("#category").val(category);
+    $(".btn_category_chip").removeClass("is_active");
+    $(`.btn_category_chip[data-category="${category}"]`).addClass("is_active");
 }
 
 export function changeMonth(delta) {
@@ -347,43 +464,38 @@ export function changeMonth(delta) {
 
 export function goToToday() {
     const today = new Date();
-
     currentYear = today.getFullYear();
     currentMonth = today.getMonth() + 1;
     updateMonthDisplay();
+    selectCalendarDate(getTodayYMD());
     refreshUI();
-    $("#date").val(today.toISOString().split("T")[0]);
 }
 
 function updateMonthDisplay() {
-    const label = `${currentYear}년 ${currentMonth}월`;
-
-    $(".txt_month").text(label);
-    $(".caption_calendar").text(`${currentYear}년 ${currentMonth}월 가계부 달력`);
+    $(".txt_month").text(`${currentYear}년 ${currentMonth}월`);
 }
 
-function getMonthTransactions() {
-    const prefix = getMonthPrefix();
-
+function getMonthTransactions(year = currentYear, month = currentMonth) {
+    const prefix = getMonthPrefix(year, month);
     return allTransactions.filter(t => t.date && t.date.startsWith(prefix));
 }
 
 function updateSummary() {
     if (!isRichUI()) return;
 
-    let income = 0;
-    let expense = 0;
+    const current = sumByType(getMonthTransactions());
+    const prevDate = new Date(currentYear, currentMonth - 2, 1);
+    const previous = sumByType(getMonthTransactions(prevDate.getFullYear(), prevDate.getMonth() + 1));
 
-    getMonthTransactions().forEach(t => {
-        if (t.type === "income") income += t.amount;
-        else expense += t.amount;
-    });
-
-    const total = income - expense;
-
-    $(".txt_amount_income").html(formatAmountHtml(income));
-    $(".txt_amount_expense").html(formatAmountHtml(expense));
-    $(".txt_amount_total").html(formatSignedAmountHtml(total));
+    $(".pill_income .txt_amount_income").text(formatPlain(current.income));
+    $(".pill_expense .txt_amount_expense").text(formatPlain(current.expense));
+    $(".txt_hero_total").text(formatSignedPlain(current.total));
+    $(".card_bento_income .txt_bento_amount").text(formatPlainWon(current.income));
+    $(".card_bento_expense .txt_bento_amount").text(formatPlainWon(current.expense));
+    $(".card_bento_total .txt_bento_amount").text(formatSignedPlain(current.total));
+    $("#incomeDelta").text(formatDelta(current.income, previous.income));
+    $("#expenseDelta").text(formatDelta(current.expense, previous.expense));
+    $("#totalDelta").text(formatDelta(current.total, previous.total));
 }
 
 function renderCalendar() {
@@ -394,22 +506,14 @@ function renderCalendar() {
     const lastDay = new Date(currentYear, currentMonth, 0);
     const startPad = firstDay.getDay();
     const daysInMonth = lastDay.getDate();
-    const selectedDate = $("#date").val();
-
+    const todayStr = getTodayYMD();
+    const selectedDate = selectedCalendarDate || $("#date").val();
     const byDate = {};
 
     getMonthTransactions().forEach(t => {
-        if (!byDate[t.date]) {
-            byDate[t.date] = { income: 0, expense: 0, incomeCount: 0, expenseCount: 0 };
-        }
-
-        if (t.type === "income") {
-            byDate[t.date].income += t.amount;
-            byDate[t.date].incomeCount++;
-        } else {
-            byDate[t.date].expense += t.amount;
-            byDate[t.date].expenseCount++;
-        }
+        if (!byDate[t.date]) byDate[t.date] = { income: 0, expense: 0 };
+        if (t.type === "income") byDate[t.date].income += t.amount;
+        else byDate[t.date].expense += t.amount;
     });
 
     let html = "";
@@ -421,40 +525,23 @@ function renderCalendar() {
     }
 
     for (let day = 1; day <= daysInMonth; day++) {
-        const dateStr = `${currentYear}-${String(currentMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        const dateStr = formatDateYMD(currentYear, currentMonth, day);
         const data = byDate[dateStr];
-        const selected = dateStr === selectedDate ? " is_selected" : "";
+        const total = data ? data.income - data.expense : 0;
+        const classes = ["cell_day"];
 
-        html += `<div class="cell_day${selected}" data-date="${dateStr}" role="gridcell">`;
+        if (dateStr === selectedDate) classes.push("is_selected");
+        if (dateStr === todayStr) classes.push("is_today");
+
+        html += `<div class="${classes.join(" ")}" data-date="${dateStr}" role="gridcell">`;
         html += `<span class="txt_day">${day}</span>`;
 
         if (data) {
-            const total = data.income - data.expense;
-
-            html += '<ul class="list_amount">';
-
-            if (data.income) {
-                html += `<li class="item_amount item_amount_income">+${formatAmount(data.income)}</li>`;
+            const dotClass = data.expense && !data.income ? "" : data.income && !data.expense ? " is_income" : "";
+            html += `<span class="dot_day${dotClass}"></span>`;
+            if (total) {
+                html += `<span class="txt_day_net ${total > 0 ? "is_income" : "is_expense"}">${total > 0 ? "+" : "-"}${formatPlain(total)}</span>`;
             }
-
-            if (data.expense) {
-                html += `<li class="item_amount item_amount_expense">-${formatAmount(data.expense)}</li>`;
-            }
-
-            html += `<li class="item_amount item_amount_total">${formatSignedAmount(total)}</li>`;
-            html += "</ul>";
-
-            html += '<ul class="list_count">';
-
-            if (data.incomeCount) {
-                html += `<li class="item_count item_count_income">${data.incomeCount}건</li>`;
-            }
-
-            if (data.expenseCount) {
-                html += `<li class="item_count item_count_expense">${data.expenseCount}건</li>`;
-            }
-
-            html += "</ul>";
         }
 
         html += "</div>";
@@ -466,10 +553,60 @@ function renderCalendar() {
         cellCount++;
     }
 
-    const rowCount = Math.ceil(cellCount / 7);
-
     grid.html(html);
-    grid.get(0).style.setProperty("--calendar-rows", rowCount);
+    grid.get(0).style.setProperty("--calendar-rows", Math.ceil(cellCount / 7));
+}
+
+function getTransactionsByDate(dateStr) {
+    return allTransactions.filter(t => t.date === dateStr);
+}
+
+function renderDayPeek(dateStr) {
+    const peekDate = dateStr || selectedCalendarDate || getTodayYMD();
+    if (!$("#dayPeek").length) return;
+
+    const dayTransactions = getTransactionsByDate(peekDate)
+        .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+
+    $("#dayPeekTitle").text(formatPeekTitle(peekDate));
+    $("#dayPeekList").empty();
+
+    if (!dayTransactions.length) {
+        $("#dayPeekEmpty").show();
+        return;
+    }
+
+    $("#dayPeekEmpty").hide();
+    $("#dayPeekList").append(`<ul>${dayTransactions.map(buildPeekItem).join("")}</ul>`);
+}
+
+export function setSideTab(tabName) {
+    const name = tabName === "peek" ? "peek" : "input";
+
+    $(".btn_side_tab").removeClass("is_active").attr("aria-selected", "false");
+    $(`.btn_side_tab[data-side-tab="${name}"]`).addClass("is_active").attr("aria-selected", "true");
+    $("#dayPeek, #inputFormPanel").removeClass("is_side_active");
+
+    if (name === "peek") {
+        $("#dayPeek").addClass("is_side_active");
+        renderDayPeek(selectedCalendarDate || $("#date").val() || getTodayYMD());
+        return;
+    }
+
+    $("#inputFormPanel").addClass("is_side_active");
+}
+
+export function selectCalendarDate(dateStr) {
+    if (!dateStr) return;
+
+    selectedCalendarDate = dateStr;
+    $("#date").val(dateStr);
+    syncDateChip();
+    $(".cell_day").removeClass("is_selected");
+    $(`.cell_day[data-date="${dateStr}"]`).addClass("is_selected");
+    renderDayPeek(dateStr);
+
+    if (!isCompactLayout()) setSideTab("input");
 }
 
 function renderTransactionList() {
@@ -477,175 +614,125 @@ function renderTransactionList() {
     if (!list.length) return;
 
     list.empty();
-
     const transactions = getHistoryTransactions();
 
-    if (isRichUI()) {
-        if (!transactions.length) {
-            $("#historyEmpty").show();
-            return;
-        }
-
-        $("#historyEmpty").hide();
-
-        const byDate = {};
-
-        transactions.forEach(t => {
-            if (!byDate[t.date]) {
-                byDate[t.date] = [];
-            }
-
-            byDate[t.date].push(t);
-        });
-
-        Object.keys(byDate)
-            .sort((a, b) => b.localeCompare(a))
-            .forEach(dateStr => {
-                const dayItems = byDate[dateStr].sort((a, b) =>
-                    (b.createdAt || "").localeCompare(a.createdAt || "")
-                );
-                const itemsHtml = dayItems.map(t => buildHistoryListItem(t)).join("");
-
-                list.append(`
-                    <section class="group_history_day">
-                        <div class="header_history_day">
-                            <h4 class="tit_history_day">${formatHistoryDateHeader(dateStr)}</h4>
-                            <span class="txt_history_day_summary">${formatDaySummary(dayItems)}</span>
-                        </div>
-                        <ul class="list_history_day">
-                            ${itemsHtml}
-                        </ul>
-                    </section>
-                `);
-            });
-
+    if (!transactions.length) {
+        $("#historyEmpty").show();
         return;
     }
 
-    allTransactions.forEach(t => {
-        const sign = t.type === "income" ? "+" : "-";
+    $("#historyEmpty").hide();
 
-        list.append(`
-            <div>
-                <div>${t.date}</div>
-                <div>${t.category}</div>
-                <div>${t.memo}</div>
-                <div>${sign}${formatAmount(t.amount)}</div>
-            </div>
-            <hr>
-        `);
+    const byDate = {};
+    transactions.forEach(t => {
+        if (!byDate[t.date]) byDate[t.date] = [];
+        byDate[t.date].push(t);
     });
+
+    Object.keys(byDate)
+        .sort((a, b) => b.localeCompare(a))
+        .forEach(dateStr => {
+            const dayItems = byDate[dateStr].sort((a, b) =>
+                (b.createdAt || "").localeCompare(a.createdAt || "")
+            );
+
+            list.append(`
+                <section class="group_history_day">
+                    <div class="header_history_day">
+                        <h4 class="tit_history_day">${formatHistoryDateHeader(dateStr)}</h4>
+                        <span class="txt_history_day_summary">${formatDaySummary(dayItems)}</span>
+                    </div>
+                    <ul class="list_history_day">
+                        ${dayItems.map(t => buildHistoryListItem(t)).join("")}
+                    </ul>
+                </section>
+            `);
+        });
 }
 
 function refreshUI() {
     updateSummary();
     renderCalendar();
     renderHistoryPanel();
-    refreshDayModalIfOpen();
-}
-
-function getTransactionsByDate(dateStr) {
-    return allTransactions.filter(t => t.date === dateStr);
-}
-
-function buildTransactionItem(t, options = {}) {
-    const sign = t.type === "income" ? "+" : "-";
-    const typeClass = t.type === "income" ? "is_income" : "is_expense";
-    const memo = t.memo ? `<span class="txt_transaction_memo">${t.memo}</span>` : "";
-    const dateHtml = options.showDate
-        ? `<span class="txt_transaction_date">${t.date}</span>`
-        : "";
-    const actionsHtml = options.showActions && t.id
-        ? `<div class="area_transaction_actions">
-                <button type="button" class="btn_transaction btn_transaction_edit" data-id="${t.id}">수정</button>
-                <button type="button" class="btn_transaction btn_transaction_delete" data-id="${t.id}">삭제</button>
-           </div>`
-        : "";
-
-    return `
-        <article class="item_transaction" data-id="${t.id || ""}">
-            <div class="box_transaction_info">
-                ${dateHtml}
-                <span class="txt_transaction_category">${t.category}</span>
-                ${memo}
-            </div>
-            <div class="area_transaction_right">
-                <span class="txt_transaction_amount ${typeClass}">${sign}${formatAmount(t.amount)}</span>
-                ${actionsHtml}
-            </div>
-        </article>
-    `;
-}
-
-function refreshDayModalIfOpen() {
-    if (!currentDayModalDate || !$("#dayDetailModal").is(":visible")) return;
-
-    renderDayModalContent(currentDayModalDate);
-}
-
-function renderDayModalContent(dateStr) {
-    const dayTransactions = getTransactionsByDate(dateStr);
-    let income = 0;
-    let expense = 0;
-
-    dayTransactions.forEach(t => {
-        if (t.type === "income") income += t.amount;
-        else expense += t.amount;
-    });
-
-    const total = income - expense;
-    const [year, month, day] = dateStr.split("-");
-
-    $("#dayModalTitle").text(`${year}년 ${Number(month)}월 ${Number(day)}일`);
-    $("#dayModalIncome").html(formatAmountHtml(income));
-    $("#dayModalExpense").html(formatAmountHtml(expense));
-    $("#dayModalTotal").html(formatSignedAmountHtml(total));
-
-    const list = $("#dayModalList");
-    list.empty();
-
-    if (!dayTransactions.length) {
-        $("#dayModalEmpty").show();
-    } else {
-        $("#dayModalEmpty").hide();
-
-        dayTransactions
-            .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))
-            .forEach(t => {
-                list.append(buildTransactionItem(t, { showActions: true }));
-            });
-    }
-}
-
-export function openDayDetailModal(dateStr) {
-    if (!dateStr || !$("#dayDetailModal").length) return;
-
-    currentDayModalDate = dateStr;
-    renderDayModalContent(dateStr);
-
-    $("#dayModalOverlay").show();
-    $("#dayDetailModal").show();
-}
-
-export function closeDayDetailModal() {
-    currentDayModalDate = null;
-    $("#dayModalOverlay").hide();
-    $("#dayDetailModal").hide();
+    renderDayPeek(selectedCalendarDate);
 }
 
 function isCompactLayout() {
-    return window.matchMedia("(max-width: 1200px)").matches;
+    return window.matchMedia("(max-width: 1023px)").matches;
+}
+
+function syncDateChip() {
+    $("#dateChipText").text(formatDateChip($("#date").val()));
+}
+
+function getAmountDigits() {
+    return String($("#amount").val() || "").replace(/[^\d]/g, "");
+}
+
+function syncAmountDisplay() {
+    const raw = getAmountDigits();
+    const display = raw ? Number(raw).toLocaleString("ko-KR") : "";
+    const active = document.activeElement === $("#amount").get(0);
+
+    $("#amount").val(active ? raw : display);
+    $("#amountHero").toggleClass("is_empty", !raw);
+}
+
+export function setAmountDigits(value) {
+    const raw = String(value || "").replace(/[^\d]/g, "");
+    $("#amount").val(raw);
+    $("#amountHero").removeClass("is_error");
+    syncAmountDisplay();
+}
+
+export function appendAmountDigit(digit) {
+    const raw = getAmountDigits();
+    if (raw.length >= 12) return;
+    if (!raw && digit === "0") {
+        $("#amount").val("");
+        syncAmountDisplay();
+        return;
+    }
+
+    $("#amount").val(raw + digit);
+    $("#amountHero").removeClass("is_error");
+    syncAmountDisplay();
+}
+
+export function removeAmountDigit() {
+    const raw = getAmountDigits();
+    $("#amount").val(raw.slice(0, -1));
+    $("#amountHero").removeClass("is_error");
+    syncAmountDisplay();
 }
 
 export function openInputModal() {
-    if (!isCompactLayout()) return;
+    syncDateChip();
+    syncAmountDisplay();
+
+    if (!isCompactLayout()) {
+        setSideTab("input");
+        return;
+    }
 
     $("#inputModalOverlay, #inputFormPanel").addClass("is_open");
 }
 
 export function openNewInputModal() {
     resetInputForm();
-    $("#date").val(new Date().toISOString().split("T")[0]);
+    const dateStr = selectedCalendarDate || getTodayYMD();
+    $("#date").val(dateStr);
+    syncDateChip();
+    openInputModal();
+}
+
+export function openInputForDate(dateStr) {
+    if (!dateStr) return;
+
+    selectCalendarDate(dateStr);
+    resetInputForm();
+    $("#date").val(dateStr);
+    syncDateChip();
     openInputModal();
 }
 
@@ -653,12 +740,32 @@ export function closeInputModal() {
     $("#inputModalOverlay, #inputFormPanel").removeClass("is_open");
 }
 
+export function openDayPeekModal() {
+    renderDayPeek(selectedCalendarDate || $("#date").val() || getTodayYMD());
+
+    if (!isCompactLayout()) {
+        setSideTab("peek");
+        return;
+    }
+
+    $("#dayPeekOverlay, #dayPeek").addClass("is_open");
+}
+
+export function closeDayPeekModal() {
+    $("#dayPeekOverlay, #dayPeek").removeClass("is_open");
+}
+
 function resetInputForm() {
     editingId = null;
     $("#saveBtn").text("저장하기");
-    $(".tit_input").text("내역 입력");
+    $(".tit_input").text("내역 추가");
     $("#amount").val("");
     $("#memo").val("");
+    $("#type").val("expense");
+    $(".btn_type").removeClass("is_active");
+    $('.btn_type[data-type="expense"]').addClass("is_active");
+    loadCategories();
+    syncAmountDisplay();
     clearFormErrors();
 }
 
@@ -667,7 +774,6 @@ export function startEditTransaction(id) {
     if (!transaction) return;
 
     editingId = id;
-
     $(".btn_type").removeClass("is_active");
     $(`.btn_type[data-type="${transaction.type}"]`).addClass("is_active");
     $("#type").val(transaction.type);
@@ -677,8 +783,8 @@ export function startEditTransaction(id) {
     $("#memo").val(transaction.memo || "");
     $("#saveBtn").text("수정하기");
     $(".tit_input").text("내역 수정");
-
-    closeDayDetailModal();
+    syncDateChip();
+    syncAmountDisplay();
     clearFormErrors();
     openInputModal();
 }
@@ -686,27 +792,30 @@ export function startEditTransaction(id) {
 async function deleteTransaction(id) {
     const user = auth.currentUser;
     if (!user || !id) return;
-
     if (!confirm("이 내역을 삭제하시겠습니까?")) return;
 
     await deleteDoc(doc(db, "users", user.uid, "transactions", id));
-
-    if (editingId === id) {
-        resetInputForm();
-    }
-
+    if (editingId === id) resetInputForm();
     await loadTransactions();
 }
 
 export function initApp() {
+    const today = getTodayYMD();
+    selectedCalendarDate = today;
     updateMonthDisplay();
-    $("#date").val(new Date().toISOString().split("T")[0]);
+    $("#date").val(today);
+    $("#type").val("expense");
+    $(".btn_type").removeClass("is_active");
+    $('.btn_type[data-type="expense"]').addClass("is_active");
     loadCategories();
     initHistoryFilter();
+    syncDateChip();
+    syncAmountDisplay();
+    renderDayPeek(today);
 }
 
 function clearFormErrors() {
-    $(".form_input .box_field").removeClass("is_error");
+    $("#amountHero, #dateChip, #categoryChips").removeClass("is_error");
     $("#formErrorMsg").hide();
 }
 
@@ -715,21 +824,21 @@ function validateForm() {
 
     const date = $("#date").val();
     const category = $("#category").val();
-    const amountVal = $("#amount").val();
+    const amountVal = getAmountDigits();
     let hasError = false;
 
     if (!date) {
-        $("#date").closest(".box_field").addClass("is_error");
+        $("#dateChip").addClass("is_error");
         hasError = true;
     }
 
     if (!category) {
-        $("#category").closest(".box_field").addClass("is_error");
+        $("#categoryChips").addClass("is_error");
         hasError = true;
     }
 
     if (amountVal === "" || amountVal == null) {
-        $("#amount").closest(".box_field").addClass("is_error");
+        $("#amountHero").addClass("is_error");
         hasError = true;
     }
 
@@ -741,20 +850,14 @@ function validateForm() {
     return true;
 }
 
-/* ---------------- 초기 ---------------- */
-
 $(document).ready(function () {
     $("#type").on("change", function () {
         loadCategories();
     });
     $("#saveBtn").on("click", saveTransaction);
-    $("#dayModalClose, #dayModalOverlay").on("click", closeDayDetailModal);
-    $("#date, #category, #amount").on("input change", function () {
-        $(this).closest(".box_field").removeClass("is_error");
-
-        if (!$(".form_input .box_field.is_error").length) {
-            $("#formErrorMsg").hide();
-        }
+    $("#date").on("change", function () {
+        selectedCalendarDate = $(this).val() || selectedCalendarDate;
+        syncDateChip();
     });
     $(document).on("click", ".btn_transaction_edit", function (event) {
         event.stopPropagation();
@@ -773,27 +876,20 @@ $(document).ready(function () {
     });
     $("#historyCategory").on("change", function () {
         syncHistoryFiltersFromUI();
-
-        if (historyFilterStart && historyFilterEnd) {
-            renderHistoryPanel();
-        }
+        if (historyFilterStart && historyFilterEnd) renderHistoryPanel();
     });
     $("#todayBtn").on("click", goToToday);
-
     initApp();
 });
-
-/* ---------------- 저장 ---------------- */
 
 async function saveTransaction() {
     const user = auth.currentUser;
     if (!user) return;
-
     if (!validateForm()) return;
 
-    const amount = Number($("#amount").val());
+    const amount = Number(getAmountDigits());
     if (!amount || amount <= 0) {
-        $("#amount").closest(".box_field").addClass("is_error");
+        $("#amountHero").addClass("is_error");
         $("#formErrorMsg").show();
         return;
     }
@@ -807,26 +903,21 @@ async function saveTransaction() {
     };
 
     if (editingId) {
-        await updateDoc(
-            doc(db, "users", user.uid, "transactions", editingId),
-            payload
-        );
+        await updateDoc(doc(db, "users", user.uid, "transactions", editingId), payload);
     } else {
-        await addDoc(
-            collection(db, "users", user.uid, "transactions"),
-            {
-                ...payload,
-                createdAt: new Date().toISOString()
-            }
-        );
+        await addDoc(collection(db, "users", user.uid, "transactions"), {
+            ...payload,
+            createdAt: new Date().toISOString()
+        });
     }
 
+    selectedCalendarDate = payload.date;
     await loadTransactions();
     resetInputForm();
+    $("#date").val(selectedCalendarDate);
+    syncDateChip();
     closeInputModal();
 }
-
-/* ---------------- 조회 ---------------- */
 
 export async function loadTransactions() {
     const user = auth.currentUser;
@@ -836,7 +927,6 @@ export async function loadTransactions() {
         collection(db, "users", user.uid, "transactions"),
         orderBy("date", "desc")
     );
-
     const snap = await getDocs(q);
 
     allTransactions = snap.docs.map(docSnap => ({
@@ -849,10 +939,9 @@ export async function loadTransactions() {
 if ("serviceWorker" in navigator) {
     window.addEventListener("load", async () => {
         try {
-            const reg = await navigator.serviceWorker.register("./service-worker.js");
-            console.log("✅ Service Worker 등록 성공", reg);
+            await navigator.serviceWorker.register("./service-worker.js");
         } catch (err) {
-            console.error("❌ Service Worker 등록 실패", err);
+            console.error("Service Worker 등록 실패", err);
         }
     });
 }
